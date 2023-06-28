@@ -42,8 +42,11 @@ private:
 
 class Order : public std::enable_shared_from_this<Order> {
 public:
-    Order(net::io_context& io, int id, HotDogHandler handler, std::shared_ptr<GasCooker> gas_cooker)
-        : io_{io}, id_{id}, handler_{std::move(handler)}, gas_cooker_(std::move(gas_cooker)) { }
+    Order(
+        net::io_context& io, int id, HotDogHandler handler, std::shared_ptr<GasCooker> gas_cooker,
+        std::shared_ptr<Sausage> sausage, std::shared_ptr<Bread> bread
+    )
+        : io_{io}, id_{id}, handler_{std::move(handler)}, gas_cooker_(std::move(gas_cooker)), sausage_(std::move(sausage)), bread_(std::move(bread)) { }
 
     // Запускает асинхронное выполнение заказа
     void Execute() {
@@ -56,7 +59,7 @@ private:
         logger_.LogMessage("Start baking bread");
         bread_->StartBake(*gas_cooker_, []() {});
         bread_timer_.async_wait([self = shared_from_this()](sys::error_code) {
-            self->bread_->StopBaking();
+            self->bread_->StopBake();
             net::defer(self->strand_, [self = std::move(self)]() {
                 self->OnBreadMade();
             });
@@ -95,10 +98,10 @@ private:
     std::shared_ptr<GasCooker> gas_cooker_;
     HotDogHandler handler_;
     Logger logger_{std::to_string(id_)};
-    std::shared_ptr<Sausage> sausage_ = std::make_shared<Sausage>(id_); 
-    std::shared_ptr<Bread> bread_ = std::make_shared<Bread>(id_);
-    net::steady_timer bread_timer_{io_, 1s};
-    net::steady_timer sausage_timer_{io_, 1500ms};
+    std::shared_ptr<Sausage> sausage_; 
+    std::shared_ptr<Bread> bread_;
+    net::steady_timer bread_timer_{io_, Milliseconds{1000}};
+    net::steady_timer sausage_timer_{io_, Milliseconds{1500}};
     net::strand<net::io_context::executor_type> strand_ = net::make_strand(io_);
 };
 
@@ -115,7 +118,9 @@ public:
         // 1) Выпекаем булку в течение 1 секунды, жарим сосиску в течение 1.5 секунд
         // 2) Собираем из них хот-дог
         const int order_id = ++next_order_id_;
-        std::make_shared<Order>(io_, order_id, std::move(handler), gas_cooker_)->Execute();
+        std::make_shared<Order>(
+            io_, order_id, std::move(handler), gas_cooker_, store_.GetSausage(), store_.GetBread()
+        )->Execute();
     }
 
 private:

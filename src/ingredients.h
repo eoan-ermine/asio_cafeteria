@@ -110,7 +110,7 @@ public:
     }
 
     // Останавливает приготовление хлеба и освобождает горелку.
-    void StopBaking() {
+    void StopBake() {
         if (!baking_start_time_) {
             throw std::logic_error("Baking has not started");
         }
