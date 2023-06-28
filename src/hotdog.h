@@ -33,7 +33,7 @@ public:
 
         if (bread_->GetBakingDuration() < MIN_BREAD_COOK_DURATION
             || bread_->GetBakingDuration() > MAX_BREAD_COOK_DURATION) {
-            throw std::invalid_argument("Invalid sausage cook duration");
+            throw std::invalid_argument("Invalid bread cook duration");
         }
     }
 
