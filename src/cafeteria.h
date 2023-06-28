@@ -29,10 +29,13 @@ public:
         : id_(std::move(id)) {
     }
 
-    void LogMessage(std::string_view message) const {
+    template <typename... Args>
+    void LogMessage(Args ...args) const {
         std::osyncstream os{std::cout};
         os << id_ << "> ["sv << duration<double>(steady_clock::now() - start_time_).count()
-           << "s] "sv << message << std::endl;
+           << "s] "sv;
+        ((os << args), ...);
+        os << std::endl;
     }
 
 private:
@@ -57,52 +60,68 @@ public:
 private:
     void MakeBread() {
         logger_.LogMessage("Start baking bread");
-        bread_->StartBake(*gas_cooker_, []() {});
-        bread_timer_.async_wait([self = shared_from_this()](sys::error_code) {
-            self->bread_->StopBake();
-            net::defer(self->strand_, [self = std::move(self)]() {
+        bread_->StartBake(*gas_cooker_, [self = shared_from_this()]() {
+            self->bread_timer_.async_wait(net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code) {
+                self->bread_->StopBake();
                 self->OnBreadMade();
-            });
+            }));
         });
     }
 
     void OnBreadMade() {
-        logger_.LogMessage("Breed has been baked."sv);
+        if(delivered_)
+            return;
+
+        logger_.LogMessage(
+            "Breed has been baked in "sv,
+            std::chrono::duration_cast<std::chrono::duration<double>>(bread_->GetBakingDuration()).count(),
+            " seconds"
+        );
+
         CheckReadiness();
     }
 
     void MakeSausage() {
         logger_.LogMessage("Start frying sausage");
-        sausage_->StartFry(*gas_cooker_, []() {});
-        sausage_timer_.async_wait([self = shared_from_this()](sys::error_code) {
-            self->sausage_->StopFry();
-            net::defer(self->strand_, [self = std::move(self)]() {
+        sausage_->StartFry(*gas_cooker_, [self = shared_from_this()]() {
+            self->sausage_timer_.async_wait(net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code) {
+                self->sausage_->StopFry();
                 self->OnSausageMade();
-            });
+            }));
         });
     }
 
     void OnSausageMade() {
-        logger_.LogMessage("Sausage has been fried."sv);
+        if(delivered_)
+            return;
+
+        logger_.LogMessage(
+            "Sausage has been fried in "sv,
+            std::chrono::duration_cast<std::chrono::duration<double>>(sausage_->GetCookDuration()).count(),
+            " seconds"
+        );
+
         CheckReadiness();
     }
 
     void CheckReadiness() {
         if (sausage_->IsCooked() && bread_->IsCooked()) {
+            delivered_ = true;
             handler_(Result{HotDog{id_, sausage_, bread_}});
         }
     }
 
     int id_;
     net::io_context& io_;
+    net::strand<net::io_context::executor_type> strand_{net::make_strand(io_)};
     std::shared_ptr<GasCooker> gas_cooker_;
     HotDogHandler handler_;
     Logger logger_{std::to_string(id_)};
     std::shared_ptr<Sausage> sausage_; 
     std::shared_ptr<Bread> bread_;
+    bool delivered_ = false;
     net::steady_timer bread_timer_{io_, Milliseconds{1000}};
     net::steady_timer sausage_timer_{io_, Milliseconds{1500}};
-    net::strand<net::io_context::executor_type> strand_ = net::make_strand(io_);
 };
 
 // Класс "Кафетерий". Готовит хот-доги
