@@ -23,6 +23,26 @@ using namespace std::literals;
 // Функция-обработчик операции приготовления хот-дога
 using HotDogHandler = std::function<void(Result<HotDog> hot_dog)>;
 
+class ThreadChecker {
+public:
+    explicit ThreadChecker(std::atomic_int& counter)
+        : counter_{counter} {
+    }
+
+    ThreadChecker(const ThreadChecker&) = delete;
+    ThreadChecker& operator=(const ThreadChecker&) = delete;
+
+    ~ThreadChecker() {
+        // assert выстрелит, если между вызовом конструктора и деструктора
+        // значение expected_counter_ изменится
+        assert(expected_counter_ == counter_);
+    }
+
+private:
+    std::atomic_int& counter_;
+    int expected_counter_ = ++counter_;
+};
+
 class Logger {
 public:
     explicit Logger(std::string id)
@@ -69,6 +89,7 @@ private:
     }
 
     void OnBaked(sys::error_code ec) {
+        ThreadChecker checker{counter_};
         bread_->StopBake();
         if (ec) {
             logger_.LogMessage("Bake error : "s + ec.what());
@@ -94,6 +115,7 @@ private:
     }
 
     void OnFried(sys::error_code ec) {
+        ThreadChecker checker{counter_};
         sausage_->StopFry();
         if (ec) {
             logger_.LogMessage("Fry error : "s + ec.what());
@@ -140,6 +162,7 @@ private:
     bool bread_baked_ = false, sausage_fried_ = false, delivered_ = false;
     net::steady_timer bread_timer_{io_, Milliseconds{1000}};
     net::steady_timer sausage_timer_{io_, Milliseconds{1500}};
+    std::atomic_int counter_{0};
 };
 
 // Класс "Кафетерий". Готовит хот-доги
