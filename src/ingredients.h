@@ -155,5 +155,5 @@ public:
     }
 
 private:
-    int next_id_ = 0;
+    std::atomic_int next_id_ = 0;
 };

@@ -144,7 +144,7 @@ public:
 
 private:
     net::io_context& io_;
-    int next_order_id_;
+    std::atomic_int next_order_id_ = 0;
     // Используется для создания ингредиентов хот-дога
     Store store_;
     // Газовая плита. По условию задачи в кафетерии есть только одна газовая плита на 8 горелок
