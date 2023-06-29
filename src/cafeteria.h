@@ -53,62 +53,80 @@ public:
 
     // Запускает асинхронное выполнение заказа
     void Execute() {
-        MakeBread();
-        MakeSausage();
+        BakeBread();
+        FrySausage();
     }
 
 private:
-    void MakeBread() {
+    void BakeBread() {
         logger_.LogMessage("Start baking bread");
         bread_->StartBake(*gas_cooker_, [self = shared_from_this()]() {
-            self->bread_timer_.async_wait(net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code) {
-                self->bread_->StopBake();
-                self->OnBreadMade();
+            self->bread_timer_.async_wait(
+            net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code ec) {
+                self->OnBaked(ec);
             }));
         });
     }
 
-    void OnBreadMade() {
-        if(delivered_)
-            return;
-
-        logger_.LogMessage(
-            "Breed has been baked in "sv,
-            std::chrono::duration_cast<std::chrono::duration<double>>(bread_->GetBakingDuration()).count(),
-            " seconds"
-        );
-
+    void OnBaked(sys::error_code ec) {
+        bread_->StopBake();
+        if (ec) {
+            logger_.LogMessage("Bake error : "s + ec.what());
+        } else {
+            logger_.LogMessage(
+                "Breed has been baked in "sv,
+                std::chrono::duration_cast<std::chrono::duration<double>>(bread_->GetBakingDuration()).count(),
+                " seconds"
+            );
+            bread_baked_ = true;
+        }
         CheckReadiness();
     }
 
-    void MakeSausage() {
-        logger_.LogMessage("Start frying sausage");
+    void FrySausage() {
+        logger_.LogMessage("Start baking bread");
         sausage_->StartFry(*gas_cooker_, [self = shared_from_this()]() {
-            self->sausage_timer_.async_wait(net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code) {
-                self->sausage_->StopFry();
-                self->OnSausageMade();
+            self->sausage_timer_.async_wait(
+            net::bind_executor(self->strand_, [self = std::move(self)](sys::error_code ec) {
+                self->OnFried(ec);
             }));
         });
     }
 
-    void OnSausageMade() {
-        if(delivered_)
-            return;
-
-        logger_.LogMessage(
-            "Sausage has been fried in "sv,
-            std::chrono::duration_cast<std::chrono::duration<double>>(sausage_->GetCookDuration()).count(),
-            " seconds"
-        );
-
+    void OnFried(sys::error_code ec) {
+        sausage_->StopFry();
+        if (ec) {
+            logger_.LogMessage("Fry error : "s + ec.what());
+        } else {
+            logger_.LogMessage(
+                "Sausage has been fried in "sv,
+                std::chrono::duration_cast<std::chrono::duration<double>>(sausage_->GetCookDuration()).count(),
+                " seconds"
+            );
+            sausage_fried_ = true;
+        }
         CheckReadiness();
     }
 
     void CheckReadiness() {
-        if (sausage_->IsCooked() && bread_->IsCooked()) {
-            delivered_ = true;
-            handler_(Result{HotDog{id_, sausage_, bread_}});
+        if (delivered_) {
+            return;
         }
+
+        // Если все компоненты гамбургера готовы, упаковываем его
+        if (IsReadyToDeliver()) {
+            Deliver();
+        }
+    }
+
+    void Deliver() {
+        delivered_ = true;
+        handler_(Result{HotDog{id_, sausage_, bread_}});
+    }
+
+    bool IsReadyToDeliver() const {
+        return bread_baked_ && sausage_fried_ &&
+               sausage_->IsCooked() && bread_->IsCooked();
     }
 
     int id_;
@@ -119,7 +137,7 @@ private:
     Logger logger_{std::to_string(id_)};
     std::shared_ptr<Sausage> sausage_; 
     std::shared_ptr<Bread> bread_;
-    bool delivered_ = false;
+    bool bread_baked_ = false, sausage_fried_ = false, delivered_ = false;
     net::steady_timer bread_timer_{io_, Milliseconds{1000}};
     net::steady_timer sausage_timer_{io_, Milliseconds{1500}};
 };
